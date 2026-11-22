@@ -1,6 +1,8 @@
-export const money = value => new Intl.NumberFormat('en-US', {
-  style: 'currency', currency: 'USD',
-}).format(Number(value) || 0);
+export const money = value => {
+  let currency = 'USD';
+  try { if (typeof localStorage !== 'undefined') currency = JSON.parse(localStorage.getItem('quotepilot.preferences.v1') || '{}').currency || 'USD'; } catch {}
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number(value) || 0);
+};
 
 export function localISODate(date = new Date()) {
   const year = date.getFullYear();
