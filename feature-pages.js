@@ -28,6 +28,30 @@ function renderInsights(){
 function saveSettings(e){e.preventDefault();const f=new FormData(e.currentTarget);const next={businessName:f.get('businessName').trim(),email:f.get('email').trim(),currency:f.get('currency')||'USD',followupDays:f.get('followupDays')||'3',note:f.get('note').trim()};localStorage.setItem(settingsKey,JSON.stringify(next));$('#feature-settings-status').textContent='Saved on this device.';renderClients();renderInsights()}
 function loadSettings(){const s=settings(),form=$('#feature-settings');if(!form)return;form.elements.businessName.value=s.businessName||'';form.elements.email.value=s.email||'';form.elements.currency.value=s.currency||'USD';form.elements.note.value=s.note||''}
 function exportReport(){const data=rows();const csv=[Object.keys(data[0]||{record:'No records'}).join(','),...data.map(item=>Object.values(item).map(v=>JSON.stringify(v??'')).join(','))].join('\n');const link=document.createElement('a');link.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));link.download='quotepilot-report.csv';link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000)}
+function bindBackup(){
+ const status=$('#feature-backup-status'),exportButton=$('#feature-backup-export'),input=$('#feature-backup-file');
+ exportButton?.addEventListener('click',()=>{
+  const payload={app:'quotepilot',version:1,exportedAt:new Date().toISOString(),records:rows(),preferences:settings()};
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');
+  link.href=url;link.download='quotepilot-backup.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  if(status)status.textContent='Backup downloaded.';
+ });
+ input?.addEventListener('change',async event=>{
+  const file=event.currentTarget.files?.[0];if(!file)return;
+  try{
+   if(file.size>2*1024*1024)throw new Error('Backup must be 2 MB or smaller.');
+   const payload=JSON.parse(await file.text());
+   if(payload.app!=='quotepilot'||payload.version!==1||!Array.isArray(payload.records)||payload.records.length>10000)throw new Error('Choose a valid quotepilot JSON backup.');
+   const valid=payload.records.filter((r)=>r&&typeof r.id==='string'&&typeof r.client==='string'&&Array.isArray(r.items)&&r.items.every(i=>i&&typeof i.description==='string'&&Number.isFinite(Number(i.quantity))&&Number.isFinite(Number(i.price)))),existing=rows(),ids=new Set(existing.map(r=>String(r.id))),merged=[...existing];let added=0;
+   for(const record of valid){const id=String(record.id);if(!id||ids.has(id))continue;ids.add(id);merged.push(record);added++}
+   localStorage.setItem(dataKey,JSON.stringify(merged));
+   if(payload.preferences&&typeof payload.preferences==='object'&&!Array.isArray(payload.preferences))localStorage.setItem(settingsKey,JSON.stringify(payload.preferences));
+   if(status)status.textContent='Restored '+added+' new records; duplicates and invalid rows were skipped. Reloading your workspace…';
+   setTimeout(()=>location.reload(),700);
+  }catch(error){if(status)status.textContent=error instanceof Error?error.message:'Could not restore this backup.'}
+  finally{event.currentTarget.value=''}
+ });
+}
 const statuses=['New','Contacted','Qualified','Won','Closed'];
 $('#feature-client-search')?.addEventListener('input',renderClients);$('#feature-settings')?.addEventListener('submit',saveSettings);$('#feature-export-report')?.addEventListener('click',exportReport);
-loadSettings();renderClients();renderInsights();window.addEventListener('app-data-updated',()=>{renderClients();renderInsights()});window.addEventListener('storage',()=>{renderClients();renderInsights()});
+loadSettings();renderClients();renderInsights();bindBackup();window.addEventListener('app-data-updated',()=>{renderClients();renderInsights()});window.addEventListener('storage',()=>{renderClients();renderInsights()});
