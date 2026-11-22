@@ -1,6 +1,6 @@
 # QuotePilot
 
-A small quote builder for independent service businesses. Create and edit line-item quotes, validate pricing, track client decisions and expiry, search or filter the quote list, export a CSV backup, and print or save a client-ready quote as PDF.
+A small quote builder for independent service businesses. Create, edit, and duplicate line-item quotes as drafts; validate pricing; track client decisions and expiry; search or filter the quote list; export CSV; download or restore a versioned JSON backup; and print or save a client-ready quote as PDF.
 
 ## Live PWA
 
