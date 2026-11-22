@@ -34,6 +34,40 @@ function persist() {
   render();
 }
 
+
+function setupDataBackup(appName, readRecords, replaceRecords, isValidRecord) {
+  $('#backup-export').onclick = () => {
+    const payload = { app: appName, version: 1, exportedAt: new Date().toISOString(), records: readRecords() };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${appName}-backup-${localISODate()}.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('Backup downloaded');
+  };
+  $('#backup-import').onclick = () => $('#backup-file').click();
+  $('#backup-file').onchange = async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const backup = JSON.parse(await file.text());
+      if (backup.app !== appName || backup.version !== 1 || !Array.isArray(backup.records) || !backup.records.every(isValidRecord)) {
+        throw new Error('This file is not a valid backup for this app.');
+      }
+      if (!confirm(`Replace this device’s current data with ${backup.records.length} records from this backup? This cannot be undone.`)) return;
+      replaceRecords(backup.records);
+      persist();
+      toast(`Imported ${backup.records.length} records`);
+    } catch (error) {
+      toast(error instanceof SyntaxError ? 'Could not read that backup file' : error.message || 'Could not import backup');
+    } finally {
+      event.target.value = '';
+    }
+  };
+}
+setupDataBackup('quotepilot', () => quotes, records => { quotes = records; }, quote => quote && typeof quote.client === 'string' && typeof quote.title === 'string' && Array.isArray(quote.items));
+
 function editQuote(quote) {
   for (const field of ['id', 'client', 'title', 'valid', 'email', 'scope']) {
     form.elements.namedItem(field).value = quote[field] || '';
@@ -81,6 +115,17 @@ function render() {
     preview.textContent = 'Preview / print';
     preview.onclick = () => printQuote(quote);
     actions.append(preview);
+    const duplicate = document.createElement('button');
+    duplicate.type = 'button';
+    duplicate.textContent = 'Duplicate';
+    duplicate.setAttribute('aria-label', `Duplicate quote for ${quote.client}`);
+    duplicate.onclick = () => {
+      const copy = { ...quote, id: crypto.randomUUID(), quoteNumber: `QP-${String(Date.now()).slice(-6)}`, items: quote.items.map(item => ({ ...item })), status: 'draft' };
+      quotes.unshift(copy);
+      persist();
+      toast('Quote duplicated as a draft');
+    };
+    actions.append(duplicate);
     const edit = document.createElement('button');
     edit.type = 'button';
     edit.textContent = 'Edit';
