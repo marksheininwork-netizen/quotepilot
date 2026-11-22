@@ -115,6 +115,27 @@ function render() {
     preview.textContent = 'Preview / print';
     preview.onclick = () => printQuote(quote);
     actions.append(preview);
+    const emailDraft = document.createElement('button');
+    emailDraft.type = 'button';
+    emailDraft.textContent = 'Email draft';
+    emailDraft.setAttribute('aria-label', `Prepare email for ${quote.client}`);
+    emailDraft.onclick = () => {
+      if (!quote.email) { toast('Add a client email first'); editQuote(quote); return; }
+      const subject = `Quote ${quote.quoteNumber || ''}: ${quote.title}`.trim();
+      const body = [
+        `Hi ${quote.client},`,
+        '',
+        `Here is the quote for ${quote.title}.`,
+        `Total: ${money(quoteTotal(quote.items))}`,
+        `Valid until: ${quote.valid}`,
+        '',
+        'You can attach the PDF from Preview / print before sending.',
+        'Please reply if you would like to discuss any changes.',
+      ].join(String.fromCharCode(10));
+      window.location.href = `mailto:${encodeURIComponent(quote.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      toast('Email draft opened. Review it before sending.');
+    };
+    actions.append(emailDraft);
     const duplicate = document.createElement('button');
     duplicate.type = 'button';
     duplicate.textContent = 'Duplicate';
