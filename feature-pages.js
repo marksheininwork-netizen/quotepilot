@@ -37,7 +37,7 @@ function bindBackup(){
   if(status)status.textContent='Backup downloaded.';
  });
  input?.addEventListener('change',async event=>{
-  const file=event.currentTarget.files?.[0];if(!file)return;
+  const source=event.currentTarget;const file=source.files?.[0];if(!file)return;
   try{
    if(file.size>2*1024*1024)throw new Error('Backup must be 2 MB or smaller.');
    const payload=JSON.parse(await file.text());
@@ -49,7 +49,7 @@ function bindBackup(){
    if(status)status.textContent='Restored '+added+' new records; duplicates and invalid rows were skipped. Reloading your workspace…';
    setTimeout(()=>location.reload(),700);
   }catch(error){if(status)status.textContent=error instanceof Error?error.message:'Could not restore this backup.'}
-  finally{event.currentTarget.value=''}
+  finally{source.value=''}
  });
 }
 const statuses=['New','Contacted','Qualified','Won','Closed'];
