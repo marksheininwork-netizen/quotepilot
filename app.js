@@ -18,6 +18,9 @@ function readQuotes() {
 }
 
 let quotes = readQuotes();
+// Persist first-run sample records so the dashboard and analytics pages share the same data.
+if (!localStorage.getItem(storageKey)) localStorage.setItem(storageKey, JSON.stringify(quotes));
+window.dispatchEvent(new Event('app-data-updated'));
 let filter = 'all';
 const $ = selector => document.querySelector(selector);
 const form = $('#quote-form');
@@ -31,6 +34,7 @@ function toast(message) {
 
 function persist() {
   localStorage.setItem(storageKey, JSON.stringify(quotes));
+  window.dispatchEvent(new Event('app-data-updated'));
   render();
 }
 
@@ -192,13 +196,18 @@ function escapeHTML(value) {
 }
 
 function printQuote(quote) {
+  let business = {};
+  try { business = JSON.parse(localStorage.getItem('quotepilot.preferences.v1') || '{}'); } catch {}
+  const issuer = escapeHTML(business.businessName || 'QuotePilot');
+  const contact = business.email ? `<br>${escapeHTML(business.email)}` : '';
+  const standardNote = business.note ? `<p class="scope">${escapeHTML(business.note)}</p>` : '';
   const popup = window.open('', '_blank', 'width=850,height=900');
   if (!popup) { toast('Allow pop-ups to preview this quote'); return; }
   const rows = quote.items.map(item => `<tr><td>${escapeHTML(item.description)}</td><td>${item.quantity}</td><td>${money(item.price)}</td><td>${money(item.quantity * item.price)}</td></tr>`).join('');
   const title = escapeHTML(quote.title);
   popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title} — QuotePilot</title><style>
     body{font:16px Arial,sans-serif;color:#252440;max-width:720px;margin:50px auto;padding:0 30px}header{display:flex;justify-content:space-between;border-bottom:2px solid #554d8d;padding-bottom:20px}h1{font-size:34px}.meta{color:#666;line-height:1.8}.scope{background:#f7f6fa;padding:18px;border-radius:8px;white-space:pre-wrap}table{width:100%;border-collapse:collapse;margin-top:35px}td,th{text-align:left;border-bottom:1px solid #ddd;padding:12px 8px}th{font-size:12px;color:#666}.total{text-align:right;font-size:24px;font-weight:bold;margin:25px 0}.print{position:fixed;right:24px;top:20px;padding:12px 20px;background:#554d8d;color:white;border:0;border-radius:6px;cursor:pointer}@media print{.print{display:none}body{margin:0}}
-    </style></head><body><button class="print" onclick="window.print()">Print / Save PDF</button><header><b>QuotePilot · ${title}</b><span>${escapeHTML(quote.quoteNumber || 'Quote')}<br>VALID UNTIL ${escapeHTML(quote.valid)}</span></header><h1>${title}</h1><p class="meta">Prepared for <b>${escapeHTML(quote.client)}</b>${quote.email ? `<br>${escapeHTML(quote.email)}` : ''}</p><p class="scope">${escapeHTML(quote.scope || 'Project scope as discussed.')}</p><table><thead><tr><th>DESCRIPTION</th><th>QTY</th><th>UNIT PRICE</th><th>AMOUNT</th></tr></thead><tbody>${rows}</tbody></table><div class="total">Total: ${money(quoteTotal(quote.items))}</div><p class="meta">Thank you for considering this project. Please reply to discuss any changes.</p></body></html>`);
+    </style></head><body><button class="print" onclick="window.print()">Print / Save PDF</button><header><b>${issuer} · ${title}</b><span>${escapeHTML(quote.quoteNumber || 'Quote')}<br>VALID UNTIL ${escapeHTML(quote.valid)}</span></header><h1>${title}</h1><p class="meta">${issuer}${contact}<br><br>Prepared for <b>${escapeHTML(quote.client)}</b>${quote.email ? `<br>${escapeHTML(quote.email)}` : ''}</p>${standardNote}<p class="scope">${escapeHTML(quote.scope || 'Project scope as discussed.')}</p><table><thead><tr><th>DESCRIPTION</th><th>QTY</th><th>UNIT PRICE</th><th>AMOUNT</th></tr></thead><tbody>${rows}</tbody></table><div class="total">Total: ${money(quoteTotal(quote.items))}</div><p class="meta">Thank you for considering this project. Please reply to discuss any changes.</p></body></html>`);
   popup.document.close();
 }
 
@@ -251,3 +260,5 @@ $('#export').onclick = () => {
 };
 
 render();
+
+import './feature-pages.js';

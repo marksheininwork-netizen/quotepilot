@@ -1,0 +1,67 @@
+import { localISODate, quoteTotal, quoteIsExpired } from './core.mjs';
+const dataKey='quotepilot.quotes.v1';
+const settingsKey='quotepilot.preferences.v1';
+const $=s=>document.querySelector(s);
+const read=key=>{try{const v=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(v)?v:[]}catch{return []}};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const dateLabel=d=>d?new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',year:'numeric'}).format(new Date(`${d}T12:00:00`)):'—';
+const settings=()=>{try{return JSON.parse(localStorage.getItem(settingsKey)||'{}')}catch{return {}}};
+const fmt=n=>new Intl.NumberFormat(undefined,{style:'currency',currency:settings().currency||'USD',maximumFractionDigits:0}).format(Number(n)||0);
+const rows=()=>read(dataKey);
+function stat(label,value,detail=''){return `<article class="feature-stat"><span>${label}</span><strong>${value}</strong><small>${detail}</small></article>`}
+function renderClients(){
+ const items=rows(); const q=($('#feature-client-search')?.value||'').trim().toLowerCase();
+ const map=new Map();
+ for(const item of items){const name=item.client||item.name||'Unnamed';const key=name.toLowerCase();const current=map.get(key)||{name,email:item.email||'',items:[],value:0};current.items.push(item);current.value+=quoteTotal(item.items||[]);if(item.email)current.email=item.email;map.set(key,current)}
+ const clients=[...map.values()].filter(c=>`${c.name} ${c.email}`.toLowerCase().includes(q)).sort((a,b)=>b.value-a.value);
+ const target=$('#feature-clients'); if(!target)return;
+ target.innerHTML=clients.length?`<table class="feature-table"><thead><tr><th>Client</th><th>Records</th><th>Quote value</th><th>Email</th><th>Action</th></tr></thead><tbody>${clients.map(c=>`<tr><td><strong>${esc(c.name)}</strong><small>${c.items.length} saved record${c.items.length===1?'':'s'}</small></td><td>${c.items.length}</td><td>${fmt(c.value)}</td><td>${esc(c.email||'—')}</td><td>${c.email?`<a class="feature-action" href="mailto:${encodeURIComponent(c.email)}">Email</a>`:'—'}</td></tr>`).join('')}</tbody></table>`:`<div class="feature-empty">${items.length?'No matches. Try a different search.':'Add records in your workspace to build this directory.'}</div>`;
+}
+function renderInsights(){
+ const list=rows();const today=localISODate();const stats=$('#feature-stats'),summary=$('#feature-summary'),actions=$('#feature-actions');if(!stats)return;
+ let metrics=[],lines=[],tasks=[];
+ if('quotepilot'==='invoicechaser'){const open=list.filter(i=>invoiceStatus(i)!=='paid');const balance=i=>Math.max(0,Number(i.amount)-Number(i.paidAmount)||0);const late=open.filter(i=>i.due<today),dueToday=open.filter(i=>i.due===today),soon=open.filter(i=>i.due>today).sort((a,b)=>a.due.localeCompare(b.due));const total=list.reduce((s,i)=>s+Number(i.amount||0),0),paid=list.reduce((s,i)=>s+Math.min(Number(i.amount||0),Number(i.paidAmount||0)),0);metrics=[stat('Outstanding',fmt(open.reduce((s,i)=>s+balance(i),0)),`${open.length} unpaid invoices`),stat('Past due',fmt(late.reduce((s,i)=>s+balance(i),0)),`${late.length} invoices need attention`),stat('Collected',fmt(paid),`${total?Math.round(paid/total*100):0}% of recorded invoice value`)];const buckets=[['1–30 days',late.filter(i=>(today-i.due)<=30)],['31–60 days',late.filter(i=>{const d=(new Date(today)-new Date(i.due))/86400000;return d>30&&d<=60})],['61+ days',late.filter(i=>(new Date(today)-new Date(i.due))/86400000>60)]];lines=[...buckets.map(([n,a])=>`<div class="feature-line"><span>${n} overdue</span><b>${fmt(a.reduce((s,i)=>s+balance(i),0))}</b></div>`),`<div class="feature-line"><span>Due today</span><b>${fmt(dueToday.reduce((s,i)=>s+balance(i),0))}</b></div>`];tasks=[...late.slice(0,4).map(i=>`<div class="feature-line"><span>${esc(i.client)} · ${dateLabel(i.due)}</span><b class="status-risk">${dueLabel(i.due)}</b></div>`),...dueToday.slice(0,2).map(i=>`<div class="feature-line"><span>${esc(i.client)}</span><b>Due today</b></div>`),...soon.slice(0,2).map(i=>`<div class="feature-line"><span>${esc(i.client)}</span><b>${dueLabel(i.due)}</b></div>`)];}
+ if('quotepilot'==='quotepilot'){const totalValue=q=>quoteTotal(q.items||[]);const active=list.filter(q=>!['accepted','declined'].includes(q.status));const accepted=list.filter(q=>q.status==='accepted');const expired=list.filter(q=>quoteIsExpired(q,today));const value=list.reduce((s,q)=>s+totalValue(q),0),won=accepted.reduce((s,q)=>s+totalValue(q),0);metrics=[stat('Quotes created',String(list.length),'Across all saved clients'),stat('Accepted value',fmt(won),`${accepted.length} accepted quote${accepted.length===1?'':'s'}`),stat('Win rate',`${list.length?Math.round(accepted.length/list.length*100):0}%`,`${active.length} active · ${fmt(value-won)} total still in play`)];lines=[...['draft','sent','accepted','declined'].map(status=>`<div class="feature-line"><span>${status[0].toUpperCase()+status.slice(1)}</span><b>${list.filter(q=>q.status===status).length}</b></div>`),`<div class="feature-line"><span>Expired and not accepted</span><b>${expired.length}</b></div>`];tasks=[...list.filter(q=>!['accepted','declined'].includes(q.status)).sort((a,b)=>(a.valid||'').localeCompare(b.valid||'')).slice(0,6).map(q=>`<div class="feature-line"><span>${esc(q.client)} · ${esc(q.title)}</span><b class="${q.valid<today?'status-risk':''}">${q.valid<today?'Expired':`Valid to ${dateLabel(q.valid)}`}</b></div>`)];}
+ if('quotepilot'==='leadrescue'){const open=list.filter(i=>!['Won','Closed'].includes(i.status));const due=open.filter(i=>i.followup<=today);const weighted=open.reduce((s,i)=>s+(Number(i.value)||0)*({New:.15,Contacted:.3,Qualified:.6}[i.status]||.1),0);const won=list.filter(i=>i.status==='Won');metrics=[stat('Open pipeline',fmt(open.reduce((s,i)=>s+(Number(i.value)||0),0)),`${open.length} active leads`),stat('Weighted estimate',fmt(weighted),'Planning estimate by stage; not a forecast'),stat('Follow-ups due',String(due.length),`${won.length} won lead${won.length===1?'':'s'} recorded`)];const sources=new Map();list.forEach(i=>{const k=i.source||'Unspecified';sources.set(k,(sources.get(k)||0)+1)});lines=[...statuses.map(status=>`<div class="feature-line"><span>${status}</span><b>${list.filter(i=>i.status===status).length}</b></div>`),...([...sources.entries()].sort((a,b)=>b[1]-a[1]).slice(0,4).map(([k,v])=>`<div class="feature-line"><span>Source · ${esc(k)}</span><b>${v}</b></div>`))];tasks=due.sort((a,b)=>a.followup.localeCompare(b.followup)).slice(0,7).map(i=>`<div class="feature-line"><span>${esc(i.name)} · ${esc(i.need)}</span><b class="status-risk">${dueLabel(i.followup)}</b></div>`);}
+ stats.innerHTML=metrics.join('');summary.innerHTML=lines.join('')||'<p class="feature-empty">Add records to see a useful breakdown.</p>';actions.innerHTML=tasks.join('')||'<p class="feature-empty">Nothing is due right now. Add a record or update a follow-up date in your workspace.</p>';
+}
+function saveSettings(e){e.preventDefault();const f=new FormData(e.currentTarget);const next={businessName:f.get('businessName').trim(),email:f.get('email').trim(),currency:f.get('currency')||'USD',followupDays:f.get('followupDays')||'3',note:f.get('note').trim()};localStorage.setItem(settingsKey,JSON.stringify(next));$('#feature-settings-status').textContent='Saved on this device.';renderClients();renderInsights()}
+function loadSettings(){const s=settings(),form=$('#feature-settings');if(!form)return;form.elements.businessName.value=s.businessName||'';form.elements.email.value=s.email||'';form.elements.currency.value=s.currency||'USD';form.elements.note.value=s.note||''}
+function exportCalendar(){
+ const list=rows().filter(item=>item.valid&&!['accepted','declined'].includes(item.status));
+ const stamp=date=>String(date).replaceAll('-','');
+ const escICS=value=>String(value||'').replaceAll('\\','\\\\').replaceAll(';','\\;').replaceAll(',','\\,').replaceAll('\n','\\n');
+ const dtstamp=new Date().toISOString().slice(0,19).replace(/[-:]/g,'')+'Z';
+ const events=list.map(item=>`BEGIN:VEVENT\r\nUID:${encodeURIComponent(item.id||item.quoteNumber||item.client)}@quotepilot\r\nDTSTAMP:${dtstamp}\r\nDTSTART;VALUE=DATE:${stamp(item.valid)}\r\nSUMMARY:${escICS('Quote expires: '+item.client+(item.quoteNumber?' · '+item.quoteNumber:''))}\r\nEND:VEVENT`).join('\r\n');
+ const blob=new Blob([`BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//QuotePilot//Quote Expiry Reminders//EN\r\n${events}\r\nEND:VCALENDAR`],{type:'text/calendar;charset=utf-8'});
+ const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download='quotepilot-expiries.ics';link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);
+ $('#feature-backup-status').textContent=list.length?'Calendar file downloaded. Review its dates before importing.':'No active quotes have an expiry date.';
+}
+function exportReport(){const data=rows();const csv=[Object.keys(data[0]||{record:'No records'}).join(','),...data.map(item=>Object.values(item).map(v=>JSON.stringify(v??'')).join(','))].join('\n');const link=document.createElement('a');link.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));link.download='quotepilot-report.csv';link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000)}
+function bindBackup(){
+ const status=$('#feature-backup-status'),exportButton=$('#feature-backup-export'),input=$('#feature-backup-file');
+ exportButton?.addEventListener('click',()=>{
+  const payload={app:'quotepilot',version:1,exportedAt:new Date().toISOString(),records:rows(),preferences:settings()};
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');
+  link.href=url;link.download='quotepilot-backup.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  if(status)status.textContent='Backup downloaded.';
+ });
+ input?.addEventListener('change',async event=>{
+  const source=event.currentTarget;const file=source.files?.[0];if(!file)return;
+  try{
+   if(file.size>2*1024*1024)throw new Error('Backup must be 2 MB or smaller.');
+   const payload=JSON.parse(await file.text());
+   if(payload.app!=='quotepilot'||payload.version!==1||!Array.isArray(payload.records)||payload.records.length>10000)throw new Error('Choose a valid quotepilot JSON backup.');
+   const valid=payload.records.filter((r)=>r&&typeof r.id==='string'&&typeof r.client==='string'&&Array.isArray(r.items)&&r.items.every(i=>i&&typeof i.description==='string'&&Number.isFinite(Number(i.quantity))&&Number.isFinite(Number(i.price)))),existing=rows(),ids=new Set(existing.map(r=>String(r.id))),merged=[...existing];let added=0;
+   for(const record of valid){const id=String(record.id);if(!id||ids.has(id))continue;ids.add(id);merged.push(record);added++}
+   localStorage.setItem(dataKey,JSON.stringify(merged));
+   if(payload.preferences&&typeof payload.preferences==='object'&&!Array.isArray(payload.preferences))localStorage.setItem(settingsKey,JSON.stringify(payload.preferences));
+   if(status)status.textContent='Restored '+added+' new records; duplicates and invalid rows were skipped. Reloading your workspace…';
+   setTimeout(()=>location.reload(),700);
+  }catch(error){if(status)status.textContent=error instanceof Error?error.message:'Could not restore this backup.'}
+  finally{source.value=''}
+ });
+}
+const statuses=['New','Contacted','Qualified','Won','Closed'];
+$('#feature-client-search')?.addEventListener('input',renderClients);$('#feature-settings')?.addEventListener('submit',saveSettings);$('#feature-export-calendar')?.addEventListener('click',exportCalendar);$('#feature-export-report')?.addEventListener('click',exportReport);
+loadSettings();renderClients();renderInsights();bindBackup();window.addEventListener('app-data-updated',()=>{renderClients();renderInsights()});window.addEventListener('storage',()=>{renderClients();renderInsights()});
