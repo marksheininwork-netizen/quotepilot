@@ -27,6 +27,16 @@ function renderInsights(){
 }
 function saveSettings(e){e.preventDefault();const f=new FormData(e.currentTarget);const next={businessName:f.get('businessName').trim(),email:f.get('email').trim(),currency:f.get('currency')||'USD',followupDays:f.get('followupDays')||'3',note:f.get('note').trim()};localStorage.setItem(settingsKey,JSON.stringify(next));$('#feature-settings-status').textContent='Saved on this device.';renderClients();renderInsights()}
 function loadSettings(){const s=settings(),form=$('#feature-settings');if(!form)return;form.elements.businessName.value=s.businessName||'';form.elements.email.value=s.email||'';form.elements.currency.value=s.currency||'USD';form.elements.note.value=s.note||''}
+function exportCalendar(){
+ const list=rows().filter(item=>item.valid&&!['accepted','declined'].includes(item.status));
+ const stamp=date=>String(date).replaceAll('-','');
+ const escICS=value=>String(value||'').replaceAll('\\','\\\\').replaceAll(';','\\;').replaceAll(',','\\,').replaceAll('\n','\\n');
+ const dtstamp=new Date().toISOString().slice(0,19).replace(/[-:]/g,'')+'Z';
+ const events=list.map(item=>`BEGIN:VEVENT\r\nUID:${encodeURIComponent(item.id||item.quoteNumber||item.client)}@quotepilot\r\nDTSTAMP:${dtstamp}\r\nDTSTART;VALUE=DATE:${stamp(item.valid)}\r\nSUMMARY:${escICS('Quote expires: '+item.client+(item.quoteNumber?' · '+item.quoteNumber:''))}\r\nEND:VEVENT`).join('\r\n');
+ const blob=new Blob([`BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//QuotePilot//Quote Expiry Reminders//EN\r\n${events}\r\nEND:VCALENDAR`],{type:'text/calendar;charset=utf-8'});
+ const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download='quotepilot-expiries.ics';link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);
+ $('#feature-backup-status').textContent=list.length?'Calendar file downloaded. Review its dates before importing.':'No active quotes have an expiry date.';
+}
 function exportReport(){const data=rows();const csv=[Object.keys(data[0]||{record:'No records'}).join(','),...data.map(item=>Object.values(item).map(v=>JSON.stringify(v??'')).join(','))].join('\n');const link=document.createElement('a');link.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));link.download='quotepilot-report.csv';link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000)}
 function bindBackup(){
  const status=$('#feature-backup-status'),exportButton=$('#feature-backup-export'),input=$('#feature-backup-file');
@@ -53,5 +63,5 @@ function bindBackup(){
  });
 }
 const statuses=['New','Contacted','Qualified','Won','Closed'];
-$('#feature-client-search')?.addEventListener('input',renderClients);$('#feature-settings')?.addEventListener('submit',saveSettings);$('#feature-export-report')?.addEventListener('click',exportReport);
+$('#feature-client-search')?.addEventListener('input',renderClients);$('#feature-settings')?.addEventListener('submit',saveSettings);$('#feature-export-calendar')?.addEventListener('click',exportCalendar);$('#feature-export-report')?.addEventListener('click',exportReport);
 loadSettings();renderClients();renderInsights();bindBackup();window.addEventListener('app-data-updated',()=>{renderClients();renderInsights()});window.addEventListener('storage',()=>{renderClients();renderInsights()});
