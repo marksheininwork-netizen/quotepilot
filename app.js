@@ -1,4 +1,4 @@
-import { itemLines, localISODate, money, parseItems, quoteIsExpired, quoteSubtotal, quoteTotal, shiftISODate, validateAdjustments, validateItems } from './core.mjs';
+import { itemLines, localISODate, money, parseItems, quoteIsExpired, quoteSubtotal, quoteTotal, shiftISODate, validateAdjustments, validateItems } from './core.mjs?v=tax-discount-1';
 
 const storageKey = 'quotepilot.quotes.v1';
 const statuses = ['draft', 'sent', 'accepted', 'declined'];
