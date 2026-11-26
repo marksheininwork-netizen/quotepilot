@@ -126,7 +126,7 @@ function render() {
         `Hi ${quote.client},`,
         '',
         `Here is the quote for ${quote.title}.`,
-        `Total: ${money(quoteTotal(quote.items))}`,
+        `Total: ${money(quoteTotal(quote.items, quote.taxPercent, quote.discountPercent))}`,
         `Valid until: ${quote.valid}`,
         '',
         'You can attach the PDF from Preview / print before sending.',
