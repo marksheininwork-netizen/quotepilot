@@ -1,4 +1,4 @@
-import { itemLines, localISODate, money, parseItems, quoteIsExpired, quoteTotal, shiftISODate, validateItems } from './core.mjs';
+import { itemLines, localISODate, money, parseItems, quoteIsExpired, quoteSubtotal, quoteTotal, shiftISODate, validateAdjustments, validateItems } from './core.mjs';
 
 const storageKey = 'quotepilot.quotes.v1';
 const statuses = ['draft', 'sent', 'accepted', 'declined'];
@@ -69,7 +69,7 @@ function setupDataBackup(appName, readRecords, replaceRecords, isValidRecord) {
 setupDataBackup('quotepilot', () => quotes, records => { quotes = records; }, quote => quote && typeof quote.client === 'string' && typeof quote.title === 'string' && Array.isArray(quote.items));
 
 function editQuote(quote) {
-  for (const field of ['id', 'client', 'title', 'valid', 'email', 'scope']) {
+  for (const field of ['id', 'client', 'title', 'valid', 'email', 'scope', 'taxPercent', 'discountPercent']) {
     form.elements.namedItem(field).value = quote[field] || '';
   }
   form.elements.namedItem('items').value = itemLines(quote.items);
@@ -104,7 +104,7 @@ function render() {
     row.querySelector('time').dateTime = quote.valid;
     row.querySelector('time').textContent = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${quote.valid}T12:00:00`));
     row.querySelector('.due-note').textContent = quoteIsExpired(quote, today) ? 'Expired' : 'Valid';
-    row.querySelector('.quote-total').textContent = money(quoteTotal(quote.items));
+    row.querySelector('.quote-total').textContent = money(quoteTotal(quote.items, quote.taxPercent, quote.discountPercent));
     const badge = row.querySelector('.pill');
     badge.className = `pill ${statuses.includes(quote.status) ? quote.status : 'draft'}`;
     badge.textContent = statuses.includes(quote.status) ? quote.status[0].toUpperCase() + quote.status.slice(1) : 'Draft';
@@ -195,10 +195,14 @@ function printQuote(quote) {
   const popup = window.open('', '_blank', 'width=850,height=900');
   if (!popup) { toast('Allow pop-ups to preview this quote'); return; }
   const rows = quote.items.map(item => `<tr><td>${escapeHTML(item.description)}</td><td>${item.quantity}</td><td>${money(item.price)}</td><td>${money(item.quantity * item.price)}</td></tr>`).join('');
+  const subtotal = quoteSubtotal(quote.items);
+  const discount = Math.round(subtotal * (Number(quote.discountPercent) || 0)) / 100;
+  const taxable = subtotal - discount;
+  const tax = Math.round(taxable * (Number(quote.taxPercent) || 0)) / 100;
   const title = escapeHTML(quote.title);
   popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title} — QuotePilot</title><style>
     body{font:16px Arial,sans-serif;color:#252440;max-width:720px;margin:50px auto;padding:0 30px}header{display:flex;justify-content:space-between;border-bottom:2px solid #554d8d;padding-bottom:20px}h1{font-size:34px}.meta{color:#666;line-height:1.8}.scope{background:#f7f6fa;padding:18px;border-radius:8px;white-space:pre-wrap}table{width:100%;border-collapse:collapse;margin-top:35px}td,th{text-align:left;border-bottom:1px solid #ddd;padding:12px 8px}th{font-size:12px;color:#666}.total{text-align:right;font-size:24px;font-weight:bold;margin:25px 0}.print{position:fixed;right:24px;top:20px;padding:12px 20px;background:#554d8d;color:white;border:0;border-radius:6px;cursor:pointer}@media print{.print{display:none}body{margin:0}}
-    </style></head><body><button class="print" onclick="window.print()">Print / Save PDF</button><header><b>QuotePilot · ${title}</b><span>${escapeHTML(quote.quoteNumber || 'Quote')}<br>VALID UNTIL ${escapeHTML(quote.valid)}</span></header><h1>${title}</h1><p class="meta">Prepared for <b>${escapeHTML(quote.client)}</b>${quote.email ? `<br>${escapeHTML(quote.email)}` : ''}</p><p class="scope">${escapeHTML(quote.scope || 'Project scope as discussed.')}</p><table><thead><tr><th>DESCRIPTION</th><th>QTY</th><th>UNIT PRICE</th><th>AMOUNT</th></tr></thead><tbody>${rows}</tbody></table><div class="total">Total: ${money(quoteTotal(quote.items))}</div><p class="meta">Thank you for considering this project. Please reply to discuss any changes.</p></body></html>`);
+    </style></head><body><button class="print" onclick="window.print()">Print / Save PDF</button><header><b>QuotePilot · ${title}</b><span>${escapeHTML(quote.quoteNumber || 'Quote')}<br>VALID UNTIL ${escapeHTML(quote.valid)}</span></header><h1>${title}</h1><p class="meta">Prepared for <b>${escapeHTML(quote.client)}</b>${quote.email ? `<br>${escapeHTML(quote.email)}` : ''}</p><p class="scope">${escapeHTML(quote.scope || 'Project scope as discussed.')}</p><table><thead><tr><th>DESCRIPTION</th><th>QTY</th><th>UNIT PRICE</th><th>AMOUNT</th></tr></thead><tbody>${rows}</tbody></table><div class="summary"><div>Subtotal: ${money(subtotal)}</div>${discount ? `<div>Discount (${Number(quote.discountPercent)}%): −${money(discount)}</div>` : ''}${tax ? `<div>Tax (${Number(quote.taxPercent)}%): ${money(tax)}</div>` : ''}<div class="total">Total: ${money(quoteTotal(quote.items, quote.taxPercent, quote.discountPercent))}</div></div><p class="meta">Thank you for considering this project. Please reply to discuss any changes.</p></body></html>`);
   popup.document.close();
 }
 
@@ -220,6 +224,10 @@ form.onsubmit = event => {
   const items = parseItems(values.items);
   const error = validateItems(items);
   if (error) { toast(error); form.elements.namedItem('items').focus(); return; }
+  const taxPercent = Number(values.taxPercent || 0);
+  const discountPercent = Number(values.discountPercent || 0);
+  const adjustmentError = validateAdjustments(discountPercent, taxPercent);
+  if (adjustmentError) { toast(adjustmentError); form.elements.namedItem(discountPercent > 100 || discountPercent < 0 ? 'discountPercent' : 'taxPercent').focus(); return; }
   const existing = quotes.find(quote => quote.id === values.id);
   const quote = {
     ...existing,
@@ -229,6 +237,8 @@ form.onsubmit = event => {
     client: values.client.trim(),
     title: values.title.trim(),
     items,
+    taxPercent,
+    discountPercent,
     status: existing?.status || 'draft',
   };
   if (existing) quotes = quotes.map(item => item.id === existing.id ? quote : item);
@@ -240,7 +250,7 @@ form.onsubmit = event => {
 };
 
 $('#export').onclick = () => {
-  const rows = [['Quote', 'Client', 'Project', 'Total', 'Status', 'Valid until'], ...quotes.map(quote => [quote.quoteNumber || 'Quote', quote.client, quote.title, quoteTotal(quote.items), quote.status, quote.valid])];
+  const rows = [['Quote', 'Client', 'Project', 'Subtotal', 'Discount %', 'Tax %', 'Total', 'Status', 'Valid until'], ...quotes.map(quote => [quote.quoteNumber || 'Quote', quote.client, quote.title, quoteSubtotal(quote.items), Number(quote.discountPercent) || 0, Number(quote.taxPercent) || 0, quoteTotal(quote.items, quote.taxPercent, quote.discountPercent), quote.status, quote.valid])];
   const csv = rows.map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(',')).join('\n');
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
   const link = document.createElement('a');
