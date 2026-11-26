@@ -17,3 +17,8 @@ Run `node --test` with Node.js 18 or newer to check quote workflows, PWA assets,
 ## Scope
 
 This prototype has no login, shared customer data, payment processing, or remote lead capture. The early-access link opens a prefilled GitHub issue for an inbound request.
+
+
+## Support and privacy
+
+Use the public [QuotePilot issue tracker](https://github.com/marksheininwork-netizen/quotepilot/issues) for support. Do not post customer, invoice, quote, financial, or lead records; use redacted or synthetic examples. The app stores its working data locally in the browser, as described on its privacy page.
