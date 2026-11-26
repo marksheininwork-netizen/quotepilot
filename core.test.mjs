@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseItems, quoteIsExpired, quoteTotal, itemLines, shiftISODate, validateItems } from './core.mjs';
+import { parseItems, quoteIsExpired, quoteTotal, quoteSubtotal, itemLines, shiftISODate, validateAdjustments, validateItems } from './core.mjs';
 
 test('line items parse and round-trip in the visible format', () => {
   const items = [{ description: 'Design', quantity: 2, price: 100 }, { description: 'Copy', quantity: 1, price: 50 }];
@@ -26,4 +26,20 @@ test('validity is based on local calendar dates and accepted quotes remain accep
   assert.equal(shiftISODate('2026-12-31', 1), '2027-01-01');
   assert.equal(quoteIsExpired({ valid: '2026-11-15', status: 'sent' }, '2026-11-16'), true);
   assert.equal(quoteIsExpired({ valid: '2026-11-15', status: 'accepted' }, '2026-11-16'), false);
+});
+
+
+test('discount applies before tax and totals remain rounded to cents', () => {
+  const items = [{ quantity: 2, price: 100 }, { quantity: 1, price: 50 }];
+  assert.equal(quoteSubtotal(items), 250);
+  assert.equal(quoteTotal(items, 8, 10), 243);
+  assert.equal(quoteTotal(items), 250);
+});
+
+test('tax and discount percentages must stay between zero and one hundred', () => {
+  assert.equal(validateAdjustments(10, 8), '');
+  assert.equal(validateAdjustments(-1, 8), 'Discount must be between 0% and 100%.');
+  assert.equal(validateAdjustments(101, 8), 'Discount must be between 0% and 100%.');
+  assert.equal(validateAdjustments(10, -1), 'Tax must be between 0% and 100%.');
+  assert.equal(validateAdjustments(10, 101), 'Tax must be between 0% and 100%.');
 });
