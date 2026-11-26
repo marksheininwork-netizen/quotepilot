@@ -35,9 +35,23 @@ export function validateItems(items) {
   return '';
 }
 
-export function quoteTotal(items) {
+export function quoteSubtotal(items) {
   const cents = items.reduce((sum, item) => sum + Math.round((Number(item.quantity) || 0) * (Number(item.price) || 0) * 100), 0);
   return cents / 100;
+}
+
+export function validateAdjustments(discountPercent, taxPercent) {
+  if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) return 'Discount must be between 0% and 100%.';
+  if (!Number.isFinite(taxPercent) || taxPercent < 0 || taxPercent > 100) return 'Tax must be between 0% and 100%.';
+  return '';
+}
+
+export function quoteTotal(items, taxPercent = 0, discountPercent = 0) {
+  const subtotalCents = Math.round(quoteSubtotal(items) * 100);
+  const discountCents = Math.round(subtotalCents * (Number(discountPercent) || 0) / 100);
+  const taxableCents = subtotalCents - discountCents;
+  const taxCents = Math.round(taxableCents * (Number(taxPercent) || 0) / 100);
+  return (taxableCents + taxCents) / 100;
 }
 
 export function itemLines(items) {
